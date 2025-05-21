@@ -37,13 +37,16 @@ def format_evaluation(evaluation: dict) -> str:
         f"* Sammenligning: {evaluation.get('comparison', '-')}\n"
         f"* Forklaring: {evaluation.get('explanation', '-')}\n"
         f"* Detaljegrad: {evaluation['detail']}\n"
-        f"* Robusthed: {evaluation['robustness']}\n\n"
+        f"* Robusthed: {evaluation['robustness']}\n"
+        f"* Brugervenlighed: {evaluation.get('usability', '-')}\n"
+        f"* Diversitet: {evaluation.get('diversity', '-')}\n\n"
         f"Feedback:\n{evaluation['feedback']}"
     )
 
+
 def main():
     query = get_user_input()
-    message_body = (
+    base_message_body = (
         f"Du er en venlig og kyndig shopping-assistent, der hjælper brugeren med at finde det bedste produkt – uanset hvor meget eller lidt brugeren selv ved om produktet."
         f"\nNår brugeren nævner et produkt (fx '{query}'), skal du først indlede en dialog med brugeren, hvor du:"
         "\n- Stiller uddybende spørgsmål for at forstå brugerens behov, erfaring og præferencer."
@@ -77,26 +80,41 @@ def main():
         description="Søg efter produkter baseret på søgeord, og returner titel, pris, butik, link og evt. andre detaljer."
     )
 
-    chat_result = user_proxy.initiate_chat(
-        assistant,
-        message=message_body,
-        summary_method="last_msg",
-        max_turns=8  # Giver agenten god tid til dialog!
-    )
+    MAX_TRIES = 3
+    min_acceptable_score = 4
 
-    agent_response = chat_result.summary
+    message_body = base_message_body  # Start med basisprompten
 
-    print("\n🛍️ Agentens svar:\n")
-    print(agent_response)
+    for attempt in range(MAX_TRIES):
+        chat_result = user_proxy.initiate_chat(
+            assistant,
+            message=message_body,
+            summary_method="last_msg",
+            max_turns=8
+        )
+        agent_response = chat_result.summary
 
-    # -- Evaluering --
-    evaluation = evaluate_response(message_body, agent_response)
-    print("\n🔍 Evaluering\n")
-    print(format_evaluation(evaluation))
+        print(f"\n🛍️ Agentens svar (forsøg {attempt + 1}):\n")
+        print(agent_response)
 
-    # Hvis du en dag vil vise produkter i punktform direkte fra API'et:
-    # products = search_products(query)
-    # print(format_products(products))
+        evaluation = evaluate_response(message_body, agent_response)
+        print("\n🔍 Evaluering\n")
+        print(format_evaluation(evaluation))
+
+        # Tjek om der er nogen scores under 4:
+        low_scores = [v for k, v in evaluation.items() if k in ['relevance', 'comparison', 'explanation', 'detail', 'robustness', 'usability', 'diversity'] and isinstance(v, int) and v < min_acceptable_score]
+        if not low_scores:
+            print("\n✅ Evaluering tilfredsstillende! Slut.")
+            break
+
+        # Ellers: tilføj feedback til prompten og prøv igen
+        print("\n⚠️ Output ikke tilfredsstillende. Prøver igen baseret på feedback...\n")
+        message_body = (
+            base_message_body +
+            f"\n\n⚠️ Forrige kritik fra evaluering: {evaluation['feedback']}\nForbedr dit svar baseret på denne kritik."
+        )
+    else:
+        print("\n🚩 Maks antal forsøg opbrugt – sidste svar blev brugt.")
 
 if __name__ == "__main__":
     main()

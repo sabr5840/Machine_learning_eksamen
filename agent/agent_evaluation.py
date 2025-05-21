@@ -23,6 +23,8 @@ def evaluate_response(user_prompt: str, agent_response: str) -> dict:
     - Forklaring (1-5): Er agentens begrundelse for anbefalingen tydelig, informativ og forståelig?
     - Detaljegrad (1-5): Indeholder output nok detaljer om produkterne (fx navn, pris, butik, vigtige funktioner) til at brugeren kan træffe et valg?
     - Robusthed (1-5): Håndterer agenten usikre eller ufuldstændige forespørgsler på en god måde?
+    - Brugervenlighed (1-5): Er output let at læse og forstå? (fx brug af punktform, emojis, tydelig anbefaling)
+    - Diversitet (1-5): Giver agenten flere forskellige valgmuligheder, eller kun én løsning?
 
     Brugerens prompt: {user_prompt}
     Agentens svar: {agent_response}
@@ -34,6 +36,8 @@ def evaluate_response(user_prompt: str, agent_response: str) -> dict:
         "explanation": int (1-5),
         "detail": int (1-5),
         "robustness": int (1-5),
+        "usability": int (1-5),
+        "diversity": int (1-5),
         "feedback": string
     }}
     """

@@ -16,9 +16,6 @@ agent_response = """
 🏆 Jeg anbefaler La Roche-Posay, da den både er meget fugtgivende, parfumefri og velegnet til sensitiv hud.
 """
 
-# Kald evaluering
 eval_result = evaluate_response(user_prompt, agent_response)
-
-# Format og print evaluering
 print("🔍 Evaluering af agentens output:\n")
 print(format_evaluation(eval_result))
