@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from autogen import AssistantAgent, UserProxyAgent, register_function
 from agent.agent_evaluation import evaluate_response
-from config import LLM_CONFIG
+from config import MISTRAL_LLM_CONFIG, OPENAI_LLM_CONFIG
 from tools.product_search import search_products
 
 def get_user_input():
@@ -16,7 +16,6 @@ def get_user_input():
     return query
 
 def format_products(products: list) -> str:
-    # Fallback: Brug denne hvis du på et tidspunkt vil vise "rå" produktdata fra search_products
     if not products:
         return "Ingen produkter fundet."
     formatted = []
@@ -43,6 +42,27 @@ def format_evaluation(evaluation: dict) -> str:
         f"Feedback:\n{evaluation['feedback']}"
     )
 
+def run_assistant_chat(user_proxy, assistant_config, message_body, max_turns=8):
+    assistant = AssistantAgent(
+        name="ShoppingAssistant",
+        llm_config=assistant_config
+    )
+
+    register_function(
+        search_products,
+        caller=assistant,
+        executor=user_proxy,
+        name="search_products",
+        description="Søg efter produkter baseret på søgeord, og returner titel, pris, butik, link og evt. andre detaljer."
+    )
+
+    chat_result = user_proxy.initiate_chat(
+        assistant,
+        message=message_body,
+        summary_method="last_msg",
+        max_turns=max_turns
+    )
+    return chat_result.summary
 
 def main():
     query = get_user_input()
@@ -63,36 +83,31 @@ def main():
 
     user_proxy = UserProxyAgent(
         name="User",
-        human_input_mode="NEVER",  # Sæt evt. til "ALWAYS" for interaktiv test
+        human_input_mode="ALWAYS",   # <-- Nu med brugerinput!
         code_execution_config=False
-    )
-
-    assistant = AssistantAgent(
-        name="ShoppingAssistant",
-        llm_config=LLM_CONFIG
-    )
-
-    register_function(
-        search_products,
-        caller=assistant,
-        executor=user_proxy,
-        name="search_products",
-        description="Søg efter produkter baseret på søgeord, og returner titel, pris, butik, link og evt. andre detaljer."
     )
 
     MAX_TRIES = 3
     min_acceptable_score = 4
 
-    message_body = base_message_body  # Start med basisprompten
+    message_body = base_message_body
 
     for attempt in range(MAX_TRIES):
-        chat_result = user_proxy.initiate_chat(
-            assistant,
-            message=message_body,
-            summary_method="last_msg",
-            max_turns=8
-        )
-        agent_response = chat_result.summary
+        print(f"\n=== Forsøg {attempt + 1} (Mistral først, så evt. OpenAI) ===\n")
+        try:
+            agent_response = run_assistant_chat(
+                user_proxy, MISTRAL_LLM_CONFIG, message_body
+            )
+        except Exception as e:
+            print("\nMistral fejlede – forsøger med OpenAI i stedet!\n", str(e))
+            try:
+                agent_response = run_assistant_chat(
+                    user_proxy, OPENAI_LLM_CONFIG, message_body
+                )
+            except Exception as e2:
+                print("\nOpenAI fejlede også:\n", str(e2))
+                print("Afslutter.")
+                return
 
         print(f"\n🛍️ Agentens svar (forsøg {attempt + 1}):\n")
         print(agent_response)
@@ -101,13 +116,13 @@ def main():
         print("\n🔍 Evaluering\n")
         print(format_evaluation(evaluation))
 
-        # Tjek om der er nogen scores under 4:
-        low_scores = [v for k, v in evaluation.items() if k in ['relevance', 'comparison', 'explanation', 'detail', 'robustness', 'usability', 'diversity'] and isinstance(v, int) and v < min_acceptable_score]
+        low_scores = [v for k, v in evaluation.items()
+                      if k in ['relevance', 'comparison', 'explanation', 'detail', 'robustness', 'usability', 'diversity']
+                      and isinstance(v, int) and v < min_acceptable_score]
         if not low_scores:
             print("\n✅ Evaluering tilfredsstillende! Slut.")
             break
 
-        # Ellers: tilføj feedback til prompten og prøv igen
         print("\n⚠️ Output ikke tilfredsstillende. Prøver igen baseret på feedback...\n")
         message_body = (
             base_message_body +

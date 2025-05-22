@@ -5,13 +5,7 @@ import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from autogen import ConversableAgent
-from config import LLM_CONFIG
-
-# Evalueringsagent
-critic = ConversableAgent(
-    name="Critic",
-    llm_config=LLM_CONFIG
-)
+from config import MISTRAL_LLM_CONFIG, OPENAI_LLM_CONFIG  # <-- Husk begge configs!
 
 def evaluate_response(user_prompt: str, agent_response: str) -> dict:
     critic_prompt = f"""
@@ -42,14 +36,28 @@ def evaluate_response(user_prompt: str, agent_response: str) -> dict:
     }}
     """
 
+    # Først: prøv Mistral
+    critic = ConversableAgent(
+        name="Critic",
+        llm_config=MISTRAL_LLM_CONFIG
+    )
     try:
         evaluation_response = critic.generate_reply(messages=[{"role": "user", "content": critic_prompt}])
         content = evaluation_response.get("content", "{}")
-
         json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
         return json.loads(json_str)
-
-    except json.JSONDecodeError:
-        return {"error": "Invalid JSON from critic"}
     except Exception as e:
-        return {"error": f"An error occurred: {str(e)}"}
+        print("Mistral fejlede, prøver OpenAI:", str(e))
+        try:
+            critic = ConversableAgent(
+                name="Critic",
+                llm_config=OPENAI_LLM_CONFIG
+            )
+            evaluation_response = critic.generate_reply(messages=[{"role": "user", "content": critic_prompt}])
+            content = evaluation_response.get("content", "{}")
+            json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
+            return json.loads(json_str)
+        except Exception as e2:
+            print("OpenAI fejlede også:", str(e2))
+            return {"error": "Alle LLM-kald fejlede"}
+
