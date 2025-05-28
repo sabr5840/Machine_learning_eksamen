@@ -1,15 +1,12 @@
-import os
 import re
-import sys
 import json
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from autogen import ConversableAgent
 from config import MISTRAL_LLM_CONFIG, OPENAI_LLM_CONFIG
 from rate_limiter import RateLimiter
 
-# Init rate limiters - sæt max_calls og period_sec efter dine API-grænser
-mistral_rate_limiter = RateLimiter(max_calls=20, period_sec=60)  # fx 20 kald pr. minut
+# Initialiser rate limiters
+mistral_rate_limiter = RateLimiter(max_calls=20, period_sec=60)
 openai_rate_limiter = RateLimiter(max_calls=20, period_sec=60)
 
 def evaluate_response(user_prompt: str, agent_response: str) -> dict:
@@ -58,7 +55,6 @@ Respond ONLY with a valid JSON object in the following format:
 }}
 """
 
-    # First: Try Mistral incl. rate limiting implemented
     mistral_rate_limiter.wait_if_needed()
     critic = ConversableAgent(
         name="Critic",
@@ -66,22 +62,43 @@ Respond ONLY with a valid JSON object in the following format:
     )
     try:
         evaluation_response = critic.generate_reply(messages=[{"role": "user", "content": critic_prompt}])
+
+        if not isinstance(evaluation_response, dict):
+            print("Warning: evaluation_response is not a dict. Skipping Mistral evaluation.")
+            raise ValueError("Invalid response type")
+
         content = evaluation_response.get("content", "{}")
-        json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
+        json_match = re.search(r"\{.*\}", content, re.DOTALL)
+        if not json_match:
+            print("Warning: No JSON found in Mistral response content. Skipping.")
+            raise ValueError("No JSON found")
+
+        json_str = json_match.group()
         return json.loads(json_str)
+
     except Exception as e:
         print("Mistral evaluation failed, trying OpenAI:", str(e))
         try:
-            # Fallback OpenAI with rate limiting if Mistral model fails/is exceeded
             openai_rate_limiter.wait_if_needed()
             critic = ConversableAgent(
                 name="Critic",
                 llm_config=OPENAI_LLM_CONFIG
             )
             evaluation_response = critic.generate_reply(messages=[{"role": "user", "content": critic_prompt}])
+
+            if not isinstance(evaluation_response, dict):
+                print("Warning: evaluation_response is not a dict from OpenAI. Skipping evaluation.")
+                raise ValueError("Invalid response type")
+
             content = evaluation_response.get("content", "{}")
-            json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
+            json_match = re.search(r"\{.*\}", content, re.DOTALL)
+            if not json_match:
+                print("Warning: No JSON found in OpenAI response content. Skipping.")
+                raise ValueError("No JSON found")
+
+            json_str = json_match.group()
             return json.loads(json_str)
+
         except Exception as e2:
             print("OpenAI evaluation failed as well:", str(e2))
             return {"error": "All LLM evaluation calls failed"}

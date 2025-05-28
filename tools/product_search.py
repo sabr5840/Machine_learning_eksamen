@@ -30,7 +30,7 @@ def search_products(query: str, max_results: int = 5) -> List[Dict]:
                 "title": p.get("title"),
                 "price": p.get("price"),
                 "store": p.get("source"),
-                "link": p.get("link"),
+                "link": p.get("link") or p.get("product_link") or None,
                 "thumbnail": p.get("thumbnail"),
                 "delivery": p.get("delivery_options", None),  # Not always available
             })
