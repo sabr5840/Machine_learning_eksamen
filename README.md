@@ -90,3 +90,6 @@ use_cases.md                 # Brugsscenarier (eksempler)
 ---
 
 
+## 📚Use-cases
+
+Hvis du vil tilgå alle use-cases, kan du trykke på dette link: [use-cases.md](use-cases.md)
