@@ -69,19 +69,6 @@ mistralai
     ```
     Agenten vil stille dig spørgsmål om dit ønskede produkt og foreslå relevante produkter.
 
-- **Test produkt-søgning isoleret:**
-    ```bash
-    python tools/product_search.py
-    ```
-    Denne fil tester kun API-opslag af produkter (kan bruges til fejlsøgning af API-nøgle).
-
-- **Test evaluering og auto-feedback (med mock-data):**
-    ```bash
-    python test_eval.py
-    python test_eval_loop.py
-    ```
-    Disse filer viser hvordan evaluering og forbedrings-loop fungerer – uden at bruge eksterne API-kald.
-
 ---
 
 ## 📝 Projektstruktur
@@ -102,19 +89,4 @@ use_cases.md                 # Brugsscenarier (eksempler)
 
 ---
 
-## 💡 Tips og fejlfinding
-
-- **API Rate Limits:**  
-  Hvis du rammer grænser på Mistral eller SerpAPI, kan du teste med mock-data i `test_eval.py` og `test_eval_loop.py`.
-
-- **Fejl i nøgler:**  
-  Hvis produkt-søgning fejler, tjek at `.env` filen er korrekt sat op.
-
-- **Ændr sproget:**  
-  Du kan tilpasse alle prompts til dansk eller engelsk, som du ønsker.
-
-- **Udvidelse:**  
-  Koden kan let udvides med flere datakilder, flere evalueringskriterier, eller tilføjes et web-UI.
-
----
 
