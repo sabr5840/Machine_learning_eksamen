@@ -10,66 +10,72 @@ from agent.agent_evaluation import evaluate_response
 from config import MISTRAL_LLM_CONFIG, OPENAI_LLM_CONFIG
 from tools.product_search import search_products
 
-# Valutakonvertering – kan udvides til EUR m.m.
 def usd_to_dkk(usd):
     try:
-        return round(float(usd) * 7.0)  # Ret evt. kursen til aktuel (fx 7,0 for USD→DKK)
+        return round(float(usd) * 7.0)  # Adjust as needed for live rates
     except Exception:
         return None
 
 def format_products(products: list) -> str:
     if not products:
-        return "Ingen produkter fundet."
+        return "No products found."
+    # Sort products by USD price (lowest first)
+    def price_to_float(pris):
+        if isinstance(pris, str) and pris.strip().startswith('$'):
+            try:
+                return float(pris.strip().replace('$', '').replace(',', ''))
+            except Exception:
+                return float('inf')
+        return float('inf')
+    sorted_products = sorted(products, key=lambda x: price_to_float(x.get('price')))
     formatted = []
-    for i, p in enumerate(products, 1):
-        pris = p.get('price', '-')
+    for i, p in enumerate(sorted_products, 1):
+        price_str = p.get('price', '-')
         dkk_info = ""
-        if pris and isinstance(pris, str) and pris.strip().startswith('$'):
-            usd = pris.strip().replace('$','').replace(',','')
+        if price_str and isinstance(price_str, str) and price_str.strip().startswith('$'):
+            usd = price_str.strip().replace('$', '').replace(',', '')
             dkk = usd_to_dkk(usd)
             if dkk:
-                dkk_info = f" (ca. {dkk} kr)"
-        # Tilføj evt. flere valutatyper her (EUR, GBP etc.)
+                dkk_info = f" ({dkk} DKK)"
         formatted.append(
-            f"{i}. 📦 {p.get('title', 'Ukendt')}\n"
-            f"   💰 Pris: {pris}{dkk_info}\n"
-            f"   🏪 Butik: {p.get('store', '-')}\n"
-            f"   🔗 Link: {p.get('link', '-')}\n"
+            f"{i}. 📦 {p.get('title', 'Unknown')}\n"
+            f"   💰 Price: {price_str}{dkk_info}\n"
+            f"   🏪 Store: {p.get('store', '-')}\n"
+            f"   🔗 Link: {p.get('link', '-') or 'Not available'}\n"
         )
     return "\n".join(formatted)
 
 def format_evaluation(evaluation: dict) -> str:
     if "error" in evaluation:
-        return f"Fejl i evaluering: {evaluation['error']}"
+        return f"Evaluation error: {evaluation['error']}"
     return (
-        f"* Relevans: {evaluation.get('relevance', '-')}\n"
-        f"* Sammenligning: {evaluation.get('comparison', '-')}\n"
-        f"* Forklaring: {evaluation.get('explanation', '-')}\n"
-        f"* Detaljegrad: {evaluation.get('detail', '-')}\n"
-        f"* Robusthed: {evaluation.get('robustness', '-')}\n"
-        f"* Brugervenlighed: {evaluation.get('usability', '-')}\n"
-        f"* Diversitet: {evaluation.get('diversity', '-')}\n"
-        f"* Pris: {evaluation.get('price', '-')}\n\n"
+        f"* Relevance: {evaluation.get('relevance', '-')}\n"
+        f"* Comparison: {evaluation.get('comparison', '-')}\n"
+        f"* Explanation: {evaluation.get('explanation', '-')}\n"
+        f"* Detail: {evaluation.get('detail', '-')}\n"
+        f"* Robustness: {evaluation.get('robustness', '-')}\n"
+        f"* Usability: {evaluation.get('usability', '-')}\n"
+        f"* Diversity: {evaluation.get('diversity', '-')}\n"
+        f"* Price: {evaluation.get('price', '-')}\n\n"
         f"Feedback:\n{evaluation.get('feedback', '-')}"
     )
 
 def get_product_type():
-    query = input("Hvilket produkt leder du efter? (fx 'TV', 'natcreme', 'laptop'):\n> ").strip()
+    query = input("What product are you looking for? (e.g. 'night cream', 'laptop', 'TV'):\n> ").strip()
     return query
 
 def collect_user_criteria(product_type):
-    # Prompter agenten til at indsamle ALLE nødvendige svar fra brugeren (uden at søge produkter endnu).
-    # Når agenten har nok, skal den udskrive alle ønsker i punktform og afslutte med teksten: KLAR TIL SØGNING
+    # Agent prompt, always in English
     system_prompt = (
-        f"Du er en venlig, grundig og kyndig dansk shopping-assistent, der hjælper brugeren med at finde det bedst egnede produkt, "
-        f"uanset om brugeren ved meget eller lidt om produktkategorien. \n"
-        f"Når brugeren nævner et produkt (fx '{product_type}'), skal du først indlede en dialog med brugeren, hvor du:\n"
-        f"- Stiller uddybende spørgsmål for at forstå brugerens behov, erfaring og præferencer – typisk om hudtype, finish, allergier, prisniveau, foretrukne mærker, eller andre relevante ønsker/krav for produktkategorien.\n"
-        f"- Hvis brugeren ikke selv nævner specifikke ønsker, skal du give konkrete eksempler på spørgsmål, og forklare kort, hvorfor de kan være vigtige at overveje (fx 'For makeup: foretrækker du en mat eller glansfuld finish? Hvilken hudtype har du? Prisniveau?').\n"
-        f"- Gør dialogen let og tryg for brugeren – forklar kort men pædagogisk hvorfor dine spørgsmål er relevante.\n"
-        f"**VIGTIGT:** Når du har fået alle nødvendige svar fra brugeren, skal du skrive et punktvist sammendrag over alle ønsker og krav fra brugeren, så det er klart hvad der skal søges efter. "
-        f"Afslut derefter dit svar med teksten: KLAR TIL SØGNING (i egen linje, gerne med store bogstaver). Du må ikke stille flere spørgsmål eller afvente mere brugerinput efter dette.\n"
-        f"Du skal **ikke** gå videre til at foreslå produkter endnu. Kun dialog og opklaring i denne fase."
+        f"You are a friendly, thorough, and knowledgeable English-speaking shopping assistant who helps the user find the best product, "
+        f"even if the user responds in Danish. If the user replies in Danish, answer in English but take their answers into account.\n"
+        f"When the user mentions a product (e.g. '{product_type}'), you must first start a dialog with the user where you:\n"
+        f"- Ask clarifying questions to understand their needs, experience, and preferences – such as skin type, finish, allergies, budget, favorite brands, or other relevant wishes/requirements for the product category.\n"
+        f"- If the user does not mention specific wishes, give concrete example questions and briefly explain why they matter (e.g. 'For skincare: do you prefer fragrance free? What is your skin type? Budget?').\n"
+        f"- Make the dialog easy and comfortable for the user – explain pedagogically why your questions matter.\n"
+        f"**IMPORTANT:** When you have all needed answers, summarize all wishes and requirements as bullet points, so it's clear what to search for. "
+        f"Then end your reply with: READY FOR SEARCH (in its own line, all caps). Do NOT ask more questions or await more user input after this.\n"
+        f"You must NOT proceed to suggest products yet. Only dialog and clarification in this phase."
     )
 
     user_proxy = UserProxyAgent(
@@ -86,10 +92,9 @@ def collect_user_criteria(product_type):
         caller=assistant,
         executor=user_proxy,
         name="search_products",
-        description="Søg efter produkter baseret på søgeord, og returner titel, pris, butik, link og evt. andre detaljer."
+        description="Search for products based on keywords, returning title, price, store, link and other details."
     )
 
-    # Chat indtil agenten svarer med "KLAR TIL SØGNING"
     criteria_summary = ""
     for _ in range(12):
         chat_result = user_proxy.initiate_chat(
@@ -101,16 +106,16 @@ def collect_user_criteria(product_type):
         last_reply = chat_result.summary
         print("\n---\n", last_reply, "\n---\n")
         criteria_summary += last_reply + "\n"
-        if "KLAR TIL SØGNING" in last_reply.upper():
+        if "READY FOR SEARCH" in last_reply.upper():
             break
     else:
-        print("Kunne ikke samle brugerens ønsker korrekt.")
+        print("Could not collect user's requirements correctly.")
     return criteria_summary
 
 def run_shopping_search(criteria_summary, assistant_config):
     user_proxy = UserProxyAgent(
         name="User",
-        human_input_mode="TERMINATE",   # INGEN brugerinput i search/output-fasen!
+        human_input_mode="TERMINATE",
         code_execution_config={"use_docker": False}
     )
     assistant = AssistantAgent(
@@ -122,19 +127,20 @@ def run_shopping_search(criteria_summary, assistant_config):
         caller=assistant,
         executor=user_proxy,
         name="search_products",
-        description="Søg efter produkter baseret på søgeord, og returner titel, pris, butik, link og evt. andre detaljer."
+        description="Search for products based on keywords, returning title, price, store, link and other details."
     )
     shopping_prompt = (
-        f"Her er brugerens ønsker og kriterier (sammendrag):\n"
+        f"Here are the user's wishes and requirements (summary):\n"
         f"{criteria_summary}\n\n"
-        f"Nu skal du:\n"
-        f"- Søge efter og sammenligne relevante produkter, der matcher brugerens kriterier. "
-        f"- Vis produkter fra både danske og internationale webshops. "
-        f"- Hvis prisen er i USD ($) eller anden valuta, skal du omregne den til DKK og vise begge priser. "
-        f"- Sammenlign altid ud fra DKK-prisen, især hvis brugeren har angivet et budget i kr. "
-        f"- Vis mindst 3-5 produkter. For hvert produkt: 📦 Navn, 💰 Pris, 🏪 Butik, 🔗 Link. Brug punktliste og emojis. "
-        f"- Marker tydeligt din anbefaling (fx med 🏆 eller ✨) og forklar kort, hvorfor du vælger netop det produkt ud fra brugerens kriterier. "
-        f"- Afslut samtalen med anbefalingen, uden at vente på mere brugerinput."
+        f"Now you must:\n"
+        f"- Search for and compare relevant products matching the user's criteria. "
+        f"- Show products from US/international webshops only (no Danish shops). "
+        f"- If the price is in USD ($), convert it to DKK and show both. "
+        f"- Always compare using the DKK price, especially if the user stated a budget in DKK. "
+        f"- Show at least 3-5 products. For each product: 📦 Name, 💰 Price, 🏪 Store, 🔗 Link. List format and emojis.\n"
+        f"- Sort products from lowest to highest price. Do not remove duplicates.\n"
+        f"- Clearly mark your recommendation (e.g. with 🏆 or ✨) and explain briefly why you chose it based on the user's criteria.\n"
+        f"- End the conversation with your recommendation, without waiting for more user input."
     )
     chat_result = user_proxy.initiate_chat(
         assistant,
@@ -147,12 +153,12 @@ def run_shopping_search(criteria_summary, assistant_config):
 def main():
     product_type = get_product_type()
 
-    # FASE 1: Indsaml brugerens krav (ALWAYS-mode)
+    # PHASE 1: Collect user requirements (ALWAYS-mode)
     try:
         criteria_summary = collect_user_criteria(product_type)
     except Exception as e:
-        print("\nMistral fejlede under dialog – prøver OpenAI i stedet.\n", str(e))
-        # Fallback til OpenAI
+        print("\nMistral failed during dialog – trying OpenAI instead.\n", str(e))
+        # Fallback to OpenAI
         user_proxy = UserProxyAgent(
             name="User",
             human_input_mode="ALWAYS",
@@ -167,43 +173,44 @@ def main():
             caller=assistant,
             executor=user_proxy,
             name="search_products",
-            description="Søg efter produkter baseret på søgeord, og returner titel, pris, butik, link og evt. andre detaljer."
+            description="Search for products based on keywords, returning title, price, store, link and other details."
         )
         criteria_summary = collect_user_criteria(product_type)
 
-    # FASE 2: Automatisk søgning og evaluering uden brugerinput
+    # PHASE 2: Automatic search and evaluation without user input
     MAX_TRIES = 3
     min_acceptable_score = 4
     shopping_prompt_used = criteria_summary
 
     for attempt in range(MAX_TRIES):
-        print(f"\n=== Produktsøgning og vurdering, forsøg {attempt + 1} ===\n")
+        print(f"\n=== Product search and evaluation, attempt {attempt + 1} ===\n")
         try:
             agent_response = run_shopping_search(shopping_prompt_used, MISTRAL_LLM_CONFIG)
         except Exception as e:
-            print("\nMistral fejlede – forsøger med OpenAI i stedet!\n", str(e))
+            print("\nMistral failed – trying OpenAI instead!\n", str(e))
             agent_response = run_shopping_search(shopping_prompt_used, OPENAI_LLM_CONFIG)
 
-        print(f"\n🛍️ Agentens produktforslag:\n{agent_response}")
+        print(f"\n🛍️ Agent's product suggestions:\n{agent_response}")
 
         evaluation = evaluate_response(shopping_prompt_used, agent_response)
-        print("\n🔍 Evaluering\n")
+        print("\n🔍 Evaluation\n")
         print(format_evaluation(evaluation))
 
         low_scores = [v for k, v in evaluation.items()
                       if k in ['relevance', 'comparison', 'explanation', 'detail', 'robustness', 'usability', 'diversity', 'price']
                       and isinstance(v, int) and v < min_acceptable_score]
         if not low_scores:
-            print("\n✅ Evaluering tilfredsstillende! Slut med anbefaling.")
+            print("\n✅ Evaluation satisfactory! Ending with recommendation.")
             break
 
-        print("\n⚠️ Output ikke tilfredsstillende. Prøver igen baseret på feedback...\n")
-        # Forbedr prompten ud fra evalueringens feedback
+        print("\n⚠️ Output not satisfactory. Trying again based on evaluation feedback...\n")
+        # Update prompt using evaluation feedback but keep user criteria
         shopping_prompt_used = (
-            f"{shopping_prompt_used}\n\nForrige kritik fra evaluering: {evaluation['feedback']}\nForbedr dine produktsøgninger og anbefalinger baseret på denne feedback."
+            f"{criteria_summary}\n\nPrevious evaluation feedback: {evaluation['feedback']}\n"
+            f"Improve your product search and recommendations based on this feedback. Do NOT change the user's original criteria."
         )
     else:
-        print("\n🚩 Maks antal forsøg opbrugt – sidste svar blev brugt.")
+        print("\n🚩 Maximum number of attempts reached – using last answer.")
 
 if __name__ == "__main__":
     main()

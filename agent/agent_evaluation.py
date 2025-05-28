@@ -9,37 +9,37 @@ from config import MISTRAL_LLM_CONFIG, OPENAI_LLM_CONFIG
 
 def evaluate_response(user_prompt: str, agent_response: str) -> dict:
     """
-    Evaluerer shoppingagentens output ud fra faste kriterier:
-    - Relevans
-    - Sammenligning
-    - Forklaring
-    - Detaljegrad
-    - Robusthed
-    - Brugervenlighed
-    - Diversitet
-    - Pris (DKK/budget/danske shops)
+    Evaluate the shopping assistant agent's output according to fixed criteria:
+    - Relevance
+    - Comparison
+    - Explanation
+    - Detail
+    - Robustness
+    - Usability
+    - Diversity
+    - Price (DKK/budget/shops)
     """
 
     critic_prompt = f"""
-Du skal evaluere en dansk shopping-assistent AI agent, der hjælper brugeren med at finde og sammenligne produkter, og komme med en anbefaling.
+You are an evaluation agent. Evaluate an English-language shopping assistant AI agent that helps the user find and compare products and gives a recommendation.
 
-Evaluer agentens output ud fra følgende kriterier:
-- Relevans (1-5): Matcher produkterne og anbefalingen brugerens ønsker, behov og kriterier?
-- Sammenligning (1-5): Er produkterne tydeligt og retfærdigt sammenlignet på relevante kriterier (fx pris, egenskaber, butik)?
-- Forklaring (1-5): Er agentens begrundelse for anbefalingen tydelig, informativ og forståelig?
-- Detaljegrad (1-5): Indeholder output nok detaljer om produkterne (fx navn, pris, butik, vigtige funktioner) til at brugeren kan træffe et valg?
-- Robusthed (1-5): Håndterer agenten usikre eller ufuldstændige forespørgsler på en god måde?
-- Brugervenlighed (1-5): Er output let at læse og forstå? (fx brug af punktform, emojis, tydelig anbefaling)
-- Diversitet (1-5): Giver agenten flere forskellige valgmuligheder, eller kun én løsning?
-- Pris (1-5): Matcher priserne brugerspecifikke krav (fx pris i DKK, inden for budget, danske shops)?
+Evaluate the agent's output according to the following criteria (rate each 1-5):
+- Relevance: Do the products and recommendations match the user's needs and criteria?
+- Comparison: Are the products clearly and fairly compared on relevant criteria (e.g., price, features, store)?
+- Explanation: Is the agent's justification for the recommendation clear, informative, and understandable?
+- Detail: Does the output contain enough details (e.g., name, price, store, important features) for the user to make a choice?
+- Robustness: Does the agent handle ambiguous or incomplete queries well?
+- Usability: Is the output easy to read and understand? (e.g., bullet points, emojis, clear recommendation)
+- Diversity: Are there several options, or only one solution?
+- Price: Do the prices match user-specified requirements (e.g., in DKK, within budget, relevant shops)?
 
-Brugerens prompt og kriterier:
+User's prompt and criteria:
 {user_prompt}
 
-Agentens svar:
+Agent's response:
 {agent_response}
 
-Svar KUN med et gyldigt JSON-objekt i følgende format:
+Respond ONLY with a valid JSON object in the following format:
 {{
     "relevance": int,
     "comparison": int,
@@ -53,7 +53,7 @@ Svar KUN med et gyldigt JSON-objekt i følgende format:
 }}
 """
 
-    # Først: prøv Mistral
+    # First: Try Mistral
     critic = ConversableAgent(
         name="Critic",
         llm_config=MISTRAL_LLM_CONFIG
@@ -64,7 +64,7 @@ Svar KUN med et gyldigt JSON-objekt i følgende format:
         json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
         return json.loads(json_str)
     except Exception as e:
-        print("Mistral fejlede, prøver OpenAI:", str(e))
+        print("Mistral evaluation failed, trying OpenAI:", str(e))
         try:
             critic = ConversableAgent(
                 name="Critic",
@@ -75,6 +75,5 @@ Svar KUN med et gyldigt JSON-objekt i følgende format:
             json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
             return json.loads(json_str)
         except Exception as e2:
-            print("OpenAI fejlede også:", str(e2))
-            return {"error": "Alle LLM-kald fejlede"}
-
+            print("OpenAI evaluation failed as well:", str(e2))
+            return {"error": "All LLM evaluation calls failed"}
