@@ -7,7 +7,7 @@ En AI-baseret, dialogstyret shopping-assistent, der hjælper brugeren med at fin
 
 ## 🚀 Features
 
-- Fører intelligent dialog på dansk (eller engelsk).
+- Fører intelligent dialog på engelsk (brugere kan dog også foretage samtale på dansk).
 - Kan stille opklarende spørgsmål og forklare vigtige parametre.
 - Henter aktuelle produkter via Google Shopping (SerpAPI).
 - Sammenligner produkter i overskueligt punktformat med emojis.
@@ -46,10 +46,10 @@ mistralai
 
 1. **Klon projektet**
     ```bash
-    git clone <repo-url>
+    git clone https://github.com/sabr5840/Machine_learning_eksamen.git
     cd <projekt-mappe>
     ```
-2. **Opret `.env` fil med dine nøgler (læg denne i projektroden):**
+2. **Opret `.env` fil med nødvendige nøgler (se synopse for korrekte nøgler):**
     ```
     SERPAPI_API_KEY=din_serpapi_nøgle
     MISTRAL_API_KEY=din_mistral_nøgle
@@ -63,11 +63,19 @@ mistralai
 
 ## 🏁 Sådan kører du koden
 
-- **Kør hele shopping-agenten (interaktivt):**
+1. **Opret og aktiver et virtuelt miljø (anbefales):**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # På Mac/Linux
+    .\venv\Scripts\activate   # På Windows
+    ```
+
+2. **Kør hele shopping-agenten (interaktivt):**
     ```bash
     python agent/research_agent.py
     ```
     Agenten vil stille dig spørgsmål om dit ønskede produkt og foreslå relevante produkter.
+
 
 ---
 
