@@ -22,7 +22,7 @@ Projektet er baseret på **Python 3.11+** og bruger følgende eksterne pakker:
 - `autogen` (fra Microsoft)
 - `python-dotenv`
 - `requests`
-- Evt. `mistralai` (hvis du bruger Mistral LLM som API)
+- `mistralai`
 
 Installer alt med:
 
