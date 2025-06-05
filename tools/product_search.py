@@ -1,3 +1,5 @@
+# tools/product_search.py
+
 import os
 import requests
 from typing import List, Dict
