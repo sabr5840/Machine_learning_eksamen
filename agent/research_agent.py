@@ -1,8 +1,11 @@
+# File: agent/research_agent.py
+
 import os
 import sys
 import math
 from dotenv import load_dotenv
 
+# Load environment variables and set module path
 load_dotenv()
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -15,13 +18,16 @@ from agent.agent_evaluation import (
 from config import MISTRAL_LLM_CONFIG, OPENAI_LLM_CONFIG
 from autogen import AssistantAgent, UserProxyAgent
 
+# Conversion rate
 USD_TO_DKK_RATE = 7.0
+
 
 def usd_to_dkk(usd: float) -> int:
     try:
         return round(usd * USD_TO_DKK_RATE)
     except Exception:
         return None
+
 
 def format_products(products: list) -> str:
     if not products:
@@ -38,7 +44,7 @@ def format_products(products: list) -> str:
     for i, p in enumerate(sorted_products, 1):
         price_str = p.get('price', '-')
         dkk_info = ""
-        if price_str and isinstance(price_str, str) and price_str.strip().startswith('$'):
+        if isinstance(price_str, str) and price_str.strip().startswith('$'):
             try:
                 usd_val = float(price_str.strip().replace('$', '').replace(',', ''))
                 dkk_val = usd_to_dkk(usd_val)
@@ -54,21 +60,30 @@ def format_products(products: list) -> str:
         )
     return "\n".join(formatted)
 
+
 def get_product_type() -> str:
     query = input("Hvad søger du efter? (f.eks. 'day cream', 'laptop', 'TV'):\n> ").strip()
     return query
 
+
 def collect_user_criteria(product_type: str) -> str:
+    import sys
+
+    # System prompt: ask all clarifying questions in one go
     system_prompt = (
         f"You are a friendly, thorough, and knowledgeable English-speaking shopping assistant who helps the user find the best product, "
-        f"even if the user responds in Danish. If the user replies in Danish, answer in English but take their answers into account.\n"
-        f"When the user mentions a product (e.g. '{product_type}'), you must first start a dialog with the user where you:\n"
-        f"- Ask clarifying questions to understand their needs, experience, and preferences – such as skin type, finish, allergies, budget, favorite brands, or other relevant wishes/requirements for the product category.\n"
-        f"- If the user does not mention specific wishes, give concrete example questions and briefly explain why they matter (e.g. 'For skincare: do you prefer fragrance free? What is your skin type? Budget?').\n"
-        f"- Make the dialog easy and comfortable for the user – explain pedagogically why your questions matter.\n"
-        f"**IMPORTANT:** When you have all needed answers, summarize all wishes and requirements as bullet points, so it's clear what to search for. "
-        f"Then end your reply with: READY FOR SEARCH (on its own line, all caps). Do NOT ask more questions or await more user input after this.\n"
-        f"You must NOT proceed to suggest products yet. Only dialog and clarification in this phase."
+        f"even if the user responds in Danish. If the user replies in Danish, answer in English but take their answers into account.\n\n"
+        f"When the user mentions a product (e.g. '{product_type}'), ask all clarifying questions in one message, covering:\n"
+        f"- Type of toothbrush (manual vs electric)\n"
+        f"- Bristle type (soft, medium, hard)\n"
+        f"- Special features (timer, pressure sensor, modes, Bluetooth, etc.)\n"
+        f"- Budget\n"
+        f"- Brand preferences\n"
+        f"- Any special needs (sensitive teeth, orthodontics, eco-friendly)\n\n"
+        f"After the user answers all, summarize their responses as bullet points and end your reply with exactly:\n"
+        f"\nREADY FOR SEARCH\n\n"
+        f"Do NOT ask any follow-up or confirmation questions beyond this single message. "
+        f"Also, do NOT include any code snippets, tool calls, or other irrelevant text after the summary."
     )
 
     user_proxy = UserProxyAgent(
@@ -76,55 +91,61 @@ def collect_user_criteria(product_type: str) -> str:
         human_input_mode="ALWAYS",
         code_execution_config={"use_docker": False}
     )
-    assistant = AssistantAgent(
-        name="ShoppingAssistant",
-        llm_config=MISTRAL_LLM_CONFIG
-    )
-    from autogen import register_function
-    register_function(
-        search_products,
-        caller=assistant,
-        executor=user_proxy,
-        name="search_products",
-        description="Search for products based on keywords, returning title, price, store, link and other details."
-    )
+    assistant = AssistantAgent(name="ShoppingAssistant", llm_config=MISTRAL_LLM_CONFIG)
 
-    criteria_summary = ""
-    for _ in range(12):
-        chat_result = user_proxy.initiate_chat(
-            assistant,
-            message=system_prompt if not criteria_summary else "",
-            summary_method="last_msg",
-            max_turns=2
-        )
-        last_reply = chat_result.summary
-        print("\n" + "-"*80)
-        print(last_reply)
-        print("\n" + "-"*80 + "\n")
-        criteria_summary += last_reply + "\n"
-        if "READY FOR SEARCH" in last_reply.upper():
-            break
-    else:
-        print("Kunne ikke indsamle brugerens krav korrekt. Stopper.")
+    def chat_fallback(message: str):
+        nonlocal assistant
+        try:
+            return user_proxy.initiate_chat(
+                assistant,
+                message=message,
+                summary_method="last_msg",
+                max_turns=2
+            )
+        except Exception:
+            assistant = AssistantAgent(name="ShoppingAssistant", llm_config=OPENAI_LLM_CONFIG)
+            return user_proxy.initiate_chat(
+                assistant,
+                message=message,
+                summary_method="last_msg",
+                max_turns=2
+            )
+
+    # Single clarification turn
+    chat_result = chat_fallback(system_prompt)
+    last_reply = chat_result.summary
+    print("\n" + "-" * 80)
+    print(last_reply)
+    print("-" * 80 + "\n")
+
+    # Extract bullet points
+    bullets = "\n".join(
+        lin for lin in last_reply.splitlines() if lin.strip().startswith('-')
+    )
+    criteria_summary = bullets + "\n"
+
+    if "READY FOR SEARCH" not in last_reply.upper():
+        print("Error: Clarification did not conclude with READY FOR SEARCH. Exiting.")
         sys.exit(1)
+
     return criteria_summary
+
 
 def run_product_loop(product_type: str, criteria_summary: str, budget_usd: int, max_tries: int = 8, min_avg_score: float = 4.0):
     final_products = []
     best_avg_score = 0.0
     best_filtered = []
-    best_evaluation = None
     last_feedback = ""
     for attempt in range(1, max_tries + 1):
         print(f"\n=== Forsøg {attempt} på produkt-search og evaluering ===\n")
-        # Første iteration = klassisk build_search_query, herefter bruger vi feedback-optimeret søgestreng
         if attempt == 1 or not last_feedback:
             search_query = build_search_query(product_type, criteria_summary)
         else:
-            print(f"\n🔁 Forbedrer søgestrengen med LLM baseret på feedback...\n")
+            print("\n🔁 Forbedrer søgestrengen med LLM baseret på feedback...\n")
             search_query = optimize_search_query_llm(product_type, criteria_summary, last_feedback)
         print(f"🔎 Søger efter: “{search_query}” (max USD {budget_usd})\n")
         raw_products = search_products(search_query, max_results=5)
+
         def parse_usd_price(p):
             price = p.get("price", "")
             if isinstance(price, str) and price.startswith('$'):
@@ -133,48 +154,48 @@ def run_product_loop(product_type: str, criteria_summary: str, budget_usd: int, 
                 except:
                     return None
             return None
-        filtered = []
-        for p in raw_products:
-            usd_val = parse_usd_price(p)
-            if usd_val is None or usd_val <= budget_usd:
-                filtered.append(p)
+
+        filtered = [p for p in raw_products if (parse_usd_price(p) is None or parse_usd_price(p) <= budget_usd)]
         if not filtered:
             print("⚠️ Ingen produkter fundet inden for budgettet. Stopper.\n")
             sys.exit(0)
+
         formatted_text = format_products(filtered)
         print("🛍️ Fundne produkter (sorteret fra billigst til dyrest):\n")
         print(formatted_text)
+
         evaluation = evaluate_response(criteria_summary, formatted_text)
         if "error" in evaluation:
             print("\n🔍 Evaluator-agenten fejlede:", evaluation["error"])
             final_products = filtered
             break
-        # Udregn gennemsnitsscoren
+
         score_keys = ['relevance','comparison','explanation','detail','robustness','usability','diversity','price']
-        scores = [evaluation.get(k, 0) for k in score_keys if isinstance(evaluation.get(k, 0), int)]
-        avg_score = sum(scores) / len(scores) if scores else 0
+        scores = [evaluation.get(k, 0) for k in score_keys]
+        avg_score = sum(scores) / len(scores)
+
         print("\n🔍 Evaluering af fundne produkter:")
         for key in score_keys:
             print(f"  * {key.capitalize():<10}: {evaluation.get(key)}")
         print(f"\n  Feedback:\n{evaluation.get('feedback')}\n")
         print(f"  ** Gennemsnitsscore: {avg_score:.2f} **\n")
-        # Gem bedste forsøg hvis det er bedre end før
+
         if avg_score > best_avg_score:
             best_avg_score = avg_score
             best_filtered = filtered
-            best_evaluation = evaluation
         if avg_score >= min_avg_score:
             print("✅ Evaluering tilfredsstillende – går videre til endelig anbefaling.\n")
             final_products = filtered
             break
         else:
             print("⚠️ For lav gennemsnitsscore, prøver igen med feedback.\n")
-            last_feedback = evaluation.get('feedback') or ""
+            last_feedback = evaluation.get('feedback', '')
             criteria_summary += f"\n\nPrevious feedback: {last_feedback}"
     else:
         print(f"🚩 Maks. forsøg nået – bruger bedste fund med gennemsnitsscore {best_avg_score:.2f}.\n")
         final_products = best_filtered
     return final_products
+
 
 def final_comparison_and_recommendation(products: list, criteria_summary: str):
     lines = []
@@ -183,7 +204,7 @@ def final_comparison_and_recommendation(products: list, criteria_summary: str):
         dkk = ""
         if isinstance(price, str) and price.startswith('$'):
             try:
-                dkk = f" ({usd_to_dkk(float(price.replace('$','').replace(',',''))) } DKK)"
+                dkk = f" ({usd_to_dkk(float(price.replace('$','').replace(',', ''))) } DKK)"
             except:
                 pass
         lines.append(f"{i}. {p.get('title')} – Price: {price}{dkk} – Store: {p.get('store')} – Link: {p.get('link')}")
@@ -205,6 +226,7 @@ def final_comparison_and_recommendation(products: list, criteria_summary: str):
     print(chat.summary)
     print("\n" + "-"*80)
 
+
 def main():
     product_type = get_product_type()
     criteria_summary = collect_user_criteria(product_type)
@@ -216,14 +238,19 @@ def main():
     if confirm != 'yes':
         print("Search cancelled. Please restart and adjust your criteria if needed.")
         sys.exit(0)
+
+    # Add budget in USD
     if "DKK" not in criteria_summary.upper():
         user_budget_dkk = 400
-        criteria_summary += f"\n- Budget: omkring {user_budget_dkk} DKK\n"
+        budget_usd = math.ceil(user_budget_dkk / USD_TO_DKK_RATE)
+        criteria_summary += f"\n- Budget: under ${budget_usd}\n"
     else:
         user_budget_dkk = 400
-    budget_usd = math.ceil(user_budget_dkk / USD_TO_DKK_RATE)
+        budget_usd = math.ceil(user_budget_dkk / USD_TO_DKK_RATE)
+
     final_products = run_product_loop(product_type, criteria_summary, budget_usd, max_tries=8, min_avg_score=4.0)
     final_comparison_and_recommendation(final_products, criteria_summary)
+
 
 if __name__ == "__main__":
     main()

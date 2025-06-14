@@ -1,4 +1,4 @@
-# agent/agent_evaluation.py
+# File: agent/agent_evaluation.py
 
 import re
 import json
@@ -8,6 +8,7 @@ from rate_limiter import RateLimiter
 
 mistral_rate_limiter = RateLimiter(max_calls=20, period_sec=60)
 openai_rate_limiter = RateLimiter(max_calls=20, period_sec=60)
+
 
 def evaluate_response(user_prompt: str, agent_response: str) -> dict:
     """
@@ -86,15 +87,18 @@ Respond ONLY with a valid JSON object in the following format:
             print("OpenAI evaluation failed as well:", str(e2))
             return {"error": "All LLM evaluation calls failed"}
 
+
 def build_search_query(product_type: str, criteria_summary: str) -> str:
     """
     Bygger søgestreng på baggrund af produkt og kriterier.
-    Bruges kun til første søgning, derefter optimerer vi med LLM og feedback.
+    Bruges kun til første søgning, herefter optimerer vi med LLM og feedback.
     """
+    # Filtrer bullets ud, undgå budget-linjer
     lines = [
         lin.strip('-* ').strip()
         for lin in criteria_summary.splitlines()
         if lin.strip().startswith(('-', '*'))
+           and not lin.strip().lower().startswith('- budget:')
     ]
     keywords = [product_type]
     for lin in lines:
@@ -117,13 +121,14 @@ def build_search_query(product_type: str, criteria_summary: str) -> str:
             seen.add(low)
     return ' '.join(final)
 
+
 def optimize_search_query_llm(product_type: str, criteria_summary: str, last_feedback: str) -> str:
     """
     Bruger LLM til at foreslå bedre søgeord ud fra feedback.
     Først prøver vi Mistral, hvis den fejler, falder vi tilbage til OpenAI.
     """
     prompt = f"""You are an expert product search optimizer for Google Shopping.
-A user is searching for: "{product_type}"
+A user is searching for: \"{product_type}\"
 Their criteria are (in bullet points):
 {criteria_summary}
 
