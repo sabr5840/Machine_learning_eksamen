@@ -3,6 +3,7 @@
 import os
 import sys
 import math
+import re
 from dotenv import load_dotenv
 
 # Load environment variables and set module path
@@ -69,17 +70,15 @@ def get_product_type() -> str:
 def collect_user_criteria(product_type: str) -> str:
     import sys
 
-    # System prompt: ask all clarifying questions in one go
     system_prompt = (
         f"You are a friendly, thorough, and knowledgeable English-speaking shopping assistant who helps the user find the best product, "
         f"even if the user responds in Danish. If the user replies in Danish, answer in English but take their answers into account.\n\n"
-        f"When the user mentions a product (e.g. '{product_type}'), ask all clarifying questions in one message, covering:\n"
-        f"- Type of toothbrush (manual vs electric)\n"
-        f"- Bristle type (soft, medium, hard)\n"
-        f"- Special features (timer, pressure sensor, modes, Bluetooth, etc.)\n"
-        f"- Budget\n"
+        f"The user is interested in the product type: '{product_type}'. Ask all relevant clarifying questions in **one message**, covering:\n"
+        f"- Type or subtype (e.g. gas vs charcoal if grill, laptop size if computer)\n"
+        f"- Important features (e.g. built-in thermometer, Bluetooth, accessories)\n"
+        f"- Budget (in any currency)\n"
         f"- Brand preferences\n"
-        f"- Any special needs (sensitive teeth, orthodontics, eco-friendly)\n\n"
+        f"- Any special needs or preferences (e.g. portability, eco-friendly, beginner-friendly)\n\n"
         f"After the user answers all, summarize their responses as bullet points and end your reply with exactly:\n"
         f"\nREADY FOR SEARCH\n\n"
         f"Do NOT ask any follow-up or confirmation questions beyond this single message. "
@@ -111,14 +110,12 @@ def collect_user_criteria(product_type: str) -> str:
                 max_turns=2
             )
 
-    # Single clarification turn
     chat_result = chat_fallback(system_prompt)
     last_reply = chat_result.summary
     print("\n" + "-" * 80)
     print(last_reply)
     print("-" * 80 + "\n")
 
-    # Extract bullet points
     bullets = "\n".join(
         lin for lin in last_reply.splitlines() if lin.strip().startswith('-')
     )
@@ -129,6 +126,17 @@ def collect_user_criteria(product_type: str) -> str:
         sys.exit(1)
 
     return criteria_summary
+
+
+def extract_budget_usd_from_criteria(criteria_summary):
+    match = re.search(r"budget[^0-9]*([\d]+)", criteria_summary.lower())
+    if match:
+        try:
+            budget_dkk = float(match.group(1))
+            return math.ceil(budget_dkk / USD_TO_DKK_RATE)
+        except:
+            return 400
+    return 400
 
 
 def run_product_loop(product_type: str, criteria_summary: str, budget_usd: int, max_tries: int = 8, min_avg_score: float = 4.0):
@@ -239,15 +247,7 @@ def main():
         print("Search cancelled. Please restart and adjust your criteria if needed.")
         sys.exit(0)
 
-    # Add budget in USD
-    if "DKK" not in criteria_summary.upper():
-        user_budget_dkk = 400
-        budget_usd = math.ceil(user_budget_dkk / USD_TO_DKK_RATE)
-        criteria_summary += f"\n- Budget: under ${budget_usd}\n"
-    else:
-        user_budget_dkk = 400
-        budget_usd = math.ceil(user_budget_dkk / USD_TO_DKK_RATE)
-
+    budget_usd = extract_budget_usd_from_criteria(criteria_summary)
     final_products = run_product_loop(product_type, criteria_summary, budget_usd, max_tries=8, min_avg_score=4.0)
     final_comparison_and_recommendation(final_products, criteria_summary)
 
